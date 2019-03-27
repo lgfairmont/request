@@ -40,7 +40,7 @@ var globalCookieJar = cookies.jar()
 
 var globalPool = {}
 
-function filterForNonReserved (reserved, options) {
+function filterForNonReserved(reserved, options) {
   // Filter out properties that are not reserved.
   // Reserved values are passed in at call site.
 
@@ -54,7 +54,7 @@ function filterForNonReserved (reserved, options) {
   return object
 }
 
-function filterOutReservedFunctions (reserved, options) {
+function filterOutReservedFunctions(reserved, options) {
   // Filter out properties that are functions and are reserved.
   // Reserved values are passed in at call site.
 
@@ -70,7 +70,7 @@ function filterOutReservedFunctions (reserved, options) {
 }
 
 // Return a simpler request object to allow serialization
-function requestToJSON () {
+function requestToJSON() {
   var self = this
   return {
     uri: self.uri,
@@ -80,7 +80,7 @@ function requestToJSON () {
 }
 
 // Return a simpler response object to allow serialization
-function responseToJSON () {
+function responseToJSON() {
   var self = this
   return {
     statusCode: self.statusCode,
@@ -90,7 +90,7 @@ function responseToJSON () {
   }
 }
 
-function Request (options) {
+function Request(options) {
   // if given the method property in options, set property explicitMethod to true
 
   // extend the Request instance with any non-reserved properties
@@ -105,6 +105,8 @@ function Request (options) {
     self._har = new Har(self)
     options = self._har.options(options)
   }
+  // 5 MB is the max size if nothing is provided
+  self.maxResponseSize = options.maxResponseSize || 5 * 1024 * 1024;
 
   stream.Stream.call(self)
   var reserved = Object.keys(Request.prototype)
@@ -131,7 +133,7 @@ util.inherits(Request, stream.Stream)
 
 // Debugging
 Request.debug = process.env.NODE_DEBUG && /\brequest\b/.test(process.env.NODE_DEBUG)
-function debug () {
+function debug() {
   if (Request.debug) {
     console.error('REQUEST %s', util.format.apply(util, arguments))
   }
@@ -291,7 +293,7 @@ Request.prototype.init = function (options) {
     // Drop :port suffix from Host header if known protocol.
     if (self.uri.port) {
       if ((self.uri.port === '80' && self.uri.protocol === 'http:') ||
-          (self.uri.port === '443' && self.uri.protocol === 'https:')) {
+        (self.uri.port === '443' && self.uri.protocol === 'https:')) {
         self.setHeader(hostHeaderName, self.uri.hostname)
       }
     }
@@ -416,7 +418,7 @@ Request.prototype.init = function (options) {
     self.elapsedTime = self.elapsedTime || 0
   }
 
-  function setContentLength () {
+  function setContentLength() {
     if (isTypedArray(self.body)) {
       self.body = Buffer.from(self.body)
     }
@@ -449,7 +451,7 @@ Request.prototype.init = function (options) {
   }
 
   var protocol = self.proxy && !self.tunnel ? self.proxy.protocol : self.uri.protocol
-  var defaultModules = {'http:': http, 'https:': https}
+  var defaultModules = { 'http:': http, 'https:': https }
   var httpModules = self.httpModules || {}
 
   self.httpModule = httpModules[protocol] || defaultModules[protocol]
@@ -515,9 +517,9 @@ Request.prototype.init = function (options) {
       }
     }
 
-  // self.on('pipe', function () {
-  //   console.error('You have already piped to this stream. Pipeing twice is likely to break the request.')
-  // })
+    // self.on('pipe', function () {
+    //   console.error('You have already piped to this stream. Pipeing twice is likely to break the request.')
+    // })
   })
 
   defer(function () {
@@ -942,7 +944,7 @@ Request.prototype.onRequestResponse = function (response) {
   // XXX This is different on 0.10, because SSL is strict by default
   if (self.httpModule === https &&
     self.strictSSL && (!response.hasOwnProperty('socket') ||
-    !response.socket.authorized)) {
+      !response.socket.authorized)) {
     debug('strict ssl error', self.uri.href)
     var sslErr = response.hasOwnProperty('socket') ? response.socket.authorizationError : self.uri.href + ' does not support SSL'
     self.emit('error', new Error('SSL Error: ' + sslErr))
@@ -966,7 +968,7 @@ Request.prototype.onRequestResponse = function (response) {
   var addCookie = function (cookie) {
     // set the cookie if it's domain in the href's domain.
     try {
-      targetCookieJar.setCookie(cookie, self.uri.href, {ignoreError: true})
+      targetCookieJar.setCookie(cookie, self.uri.href, { ignoreError: true })
     } catch (e) {
       self.emit('error', e)
     }
@@ -1101,14 +1103,23 @@ Request.prototype.readResponseBody = function (response) {
   var buffers = []
   var bufferLength = 0
   var strings = []
+  var responseBytesLeft = self.maxResponseSize;
 
   self.on('data', function (chunk) {
+    if (chunk.len > responseBytesLeft) {
+      var err = Error("Response size is too big. Max allowed is  " + self.maxResponseSize);
+      res.destroy(err);
+      self.emit('error', err);
+      self.abort();
+      return;
+    }
     if (!Buffer.isBuffer(chunk)) {
       strings.push(chunk)
     } else if (chunk.length) {
       bufferLength += chunk.length
       buffers.push(chunk)
     }
+    responseBytesLeft -= chunk.len;
   })
   self.on('end', function () {
     debug('end event', self.uri.href)
