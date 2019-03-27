@@ -385,8 +385,22 @@ Request.prototype.init = function (options) {
     )
   }
 
-  if (self.gzip && !self.hasHeader('accept-encoding')) {
-    self.setHeader('accept-encoding', 'gzip, deflate')
+  if ((self.gzip || self.brotli) && !self.hasHeader('accept-encoding')) {
+    var acceptedEncodings = []
+    if (self.gzip) {
+      acceptedEncodings.push('gzip', 'deflate')
+    }
+    if (self.brotli) {
+      if (typeof zlib.createBrotliDecompress === 'function') {
+        acceptedEncodings.push('br')
+      }
+      else {
+        debug('Will not send brotli as allowed encoding since,  zlib.createBrotliDecompress is not available')
+      }
+    }
+    if (acceptedEncodings.length > 0) {
+      self.setHeader('accept-encoding', acceptedEncodings.join(', '))
+    }
   }
 
   if (self.uri.auth && !self.hasHeader('authorization')) {
@@ -1029,6 +1043,15 @@ Request.prototype.onRequestResponse = function (response) {
       if (contentEncoding === 'gzip') {
         responseContent = zlib.createGunzip(zlibOptions)
         response.pipe(responseContent)
+      } else if (contentEncoding === 'br') {
+        if (typeof zlib.createBrotliDecompress !== 'function') {
+          debug('ignoring brotli because zlib.createBrotliDecompress is not available')
+          responseContent = response
+        } else {
+          //TODO: check if zlibOptions are fine for createBrotliDecompress
+          responseContent = zlib.createBrotliDecompress()
+          response.pipe(responseContent)
+        }
       } else if (contentEncoding === 'deflate') {
         responseContent = zlib.createInflate(zlibOptions)
         response.pipe(responseContent)
