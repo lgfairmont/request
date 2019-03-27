@@ -1106,7 +1106,9 @@ Request.prototype.readResponseBody = function (response) {
   var responseBytesLeft = self.maxResponseSize;
 
   self.on('data', function (chunk) {
-    if (chunk.len > responseBytesLeft) {
+    //TODO: check why we have length vs byteLength, is this length always the correct one
+    //why could it be that in some cases chunk is not Buffer?
+    if (chunk.length > responseBytesLeft) {
       var err = Error("Response size is too big. Max allowed is  " + self.maxResponseSize);
       res.destroy(err);
       self.emit('error', err);
@@ -1119,7 +1121,7 @@ Request.prototype.readResponseBody = function (response) {
       bufferLength += chunk.length
       buffers.push(chunk)
     }
-    responseBytesLeft -= chunk.len;
+    responseBytesLeft -= chunk.length;
   })
   self.on('end', function () {
     debug('end event', self.uri.href)
