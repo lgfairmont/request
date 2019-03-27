@@ -1110,7 +1110,7 @@ Request.prototype.readResponseBody = function (response) {
     //why could it be that in some cases chunk is not Buffer?
     if (chunk.length > responseBytesLeft) {
       var err = Error("Response size is too big. Max allowed is  " + self.maxResponseSize);
-      res.destroy(err);
+      self.destroy(err);
       self.emit('error', err);
       self.abort();
       return;
